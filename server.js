@@ -1,178 +1,131 @@
 const express = require('express');
 const multer = require('multer');
-const mime = require('mime-types');
 const path = require('path');
 const fs = require('fs');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Armazenamento dos uploads em memória
-const storage = multer.memoryStorage();
+// Configurar pasta de uploads
+const uploadFolder = path.join(__dirname, 'uploads');
+if (!fs.existsSync(uploadFolder)) fs.mkdirSync(uploadFolder);
+
+const storage = multer.diskStorage({
+  destination: (req, file, cb) => cb(null, uploadFolder),
+  filename: (req, file, cb) => cb(null, Date.now() + '-' + file.originalname)
+});
+
 const upload = multer({ storage });
 
-// Cria diretório temporário pra salvar imagens
-const uploadsDir = path.join(__dirname, 'uploads');
-if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir);
-
+app.use(express.static('public'));
 app.use(express.urlencoded({ extended: true }));
-app.use(express.json());
 
-// Página inicial com formulário invisível
+// Página inicial
 app.get('/', (req, res) => {
   res.send(`
-  <!DOCTYPE html>
-  <html lang="pt-BR">
-  <head>
-    <meta charset="UTF-8">
-    <title>EQP IMP - UPLOAD</title>
-    <style>
-      * { margin: 0; padding: 0; box-sizing: border-box; }
-      body {
-        background: linear-gradient(to right, #0f0c29, #302b63, #24243e);
-        color: white;
-        font-family: Arial, sans-serif;
-        height: 100vh;
-        display: flex;
-        flex-direction: column;
-        justify-content: center;
-        align-items: center;
-        animation: fadeIn 2s ease-in-out;
-      }
-      h1 {
-        font-size: 2.5rem;
-        color: #0ff;
-        text-shadow: 0 0 20px #0ff;
-      }
-      form {
-        margin-top: 20px;
-      }
-      input[type="file"] {
-        display: none;
-      }
-      label {
-        background-color: #0ff;
-        color: #000;
-        padding: 10px 20px;
-        border-radius: 10px;
-        cursor: pointer;
-        font-weight: bold;
-        animation: pulse 2s infinite;
-      }
-      @keyframes fadeIn {
-        from { opacity: 0; }
-        to { opacity: 1; }
-      }
-      @keyframes pulse {
-        0%, 100% { transform: scale(1); }
-        50% { transform: scale(1.05); }
-      }
-    </style>
-  </head>
-  <body>
-    <h1>EQP IMP - UPLOAD</h1>
-    <form id="form" enctype="multipart/form-data" method="POST" action="/upload">
-      <label for="file">ENVIAR FOTO</label>
-      <input type="file" id="file" name="image" onchange="document.getElementById('form').submit()">
-    </form>
-
-    <script>
-      document.querySelector('label').addEventListener('click', () => {
-        document.getElementById('file').click();
-      });
-    </script>
-  </body>
-  </html>
+    <html>
+      <head>
+        <title>EQP IMP - UPLOAD</title>
+        <style>
+          body {
+            background: black;
+            color: white;
+            font-family: sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            flex-direction: column;
+          }
+          h1 {
+            font-size: 2rem;
+            color: #0ff;
+            text-shadow: 0 0 15px #0ff;
+          }
+          input[type="file"] {
+            margin-top: 20px;
+          }
+        </style>
+      </head>
+      <body>
+        <h1>EQP IMP - UPLOAD</h1>
+        <form id="uploadForm" enctype="multipart/form-data" method="POST" action="/upload">
+          <input type="file" name="file" id="fileInput" required />
+        </form>
+        <script>
+          const fileInput = document.getElementById('fileInput');
+          fileInput.addEventListener('change', () => {
+            document.getElementById('uploadForm').submit();
+          });
+        </script>
+      </body>
+    </html>
   `);
 });
 
-// Rota que salva a imagem e redireciona
-app.post('/upload', upload.single('image'), (req, res) => {
-  if (!req.file) return res.status(400).send('Nenhuma imagem enviada');
-
-  const ext = mime.extension(req.file.mimetype) || 'jpg';
-  const fileName = `img_${Date.now()}.${ext}`;
-  const filePath = path.join(uploadsDir, fileName);
-
-  fs.writeFileSync(filePath, req.file.buffer);
-
-  res.redirect(`/upload?file=${fileName}`);
-});
-
-// Rota de exibição do link + botão de download
-app.get('/upload', (req, res) => {
-  const { file } = req.query;
-  if (!file) return res.status(400).send('Arquivo não encontrado');
-
-  const fileUrl = `/img/${file}`;
+// Rota de upload
+app.post('/upload', upload.single('file'), (req, res) => {
+  const filePath = `/uploads/${req.file.filename}`;
+  const downloadLink = `${req.protocol}://${req.get('host')}${filePath}`;
   res.send(`
-  <!DOCTYPE html>
-  <html lang="pt-BR">
-  <head>
-    <meta charset="UTF-8">
-    <title>Arquivo Enviado</title>
-    <style>
-      body {
-        background: #121212;
-        color: white;
-        font-family: Arial, sans-serif;
-        text-align: center;
-        padding-top: 100px;
-        animation: slideDown 1.5s ease;
-      }
-      a {
-        display: inline-block;
-        margin-top: 20px;
-        padding: 15px 30px;
-        border-radius: 10px;
-        background: linear-gradient(45deg, #ff0066, #00ccff, #00ff99);
-        background-size: 300% 300%;
-        color: white;
-        font-weight: bold;
-        text-decoration: none;
-        animation: changeColors 5s infinite;
-      }
-      input {
-        margin-top: 20px;
-        width: 90%;
-        max-width: 300px;
-        padding: 10px;
-        border-radius: 5px;
-        border: none;
-      }
-      @keyframes slideDown {
-        from { transform: translateY(-50px); opacity: 0; }
-        to { transform: translateY(0); opacity: 1; }
-      }
-      @keyframes changeColors {
-        0% { background-position: 0% 50%; }
-        50% { background-position: 100% 50%; }
-        100% { background-position: 0% 50%; }
-      }
-    </style>
-  </head>
-  <body>
-    <h2>Link da sua imagem:</h2>
-    <input readonly value="${fileUrl}" onclick="this.select()"><br>
-    <a href="${fileUrl}" download onclick="startDownload(this)">Baixar Imagem</a>
-
-    <script>
-      function startDownload(el) {
-        el.innerText = "Iniciando download...";
-        setTimeout(() => {
-          el.innerText = "Baixar Imagem";
-        }, 3000);
-      }
-    </script>
-  </body>
-  </html>
+    <html>
+      <head>
+        <title>Arquivo enviado</title>
+        <style>
+          body {
+            background: #111;
+            color: white;
+            font-family: sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            flex-direction: column;
+            animation: fadeIn 1s ease-in-out;
+          }
+          @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(20px); }
+            to { opacity: 1; transform: translateY(0); }
+          }
+          a#download {
+            background: linear-gradient(45deg, #00f, #0ff);
+            color: white;
+            padding: 12px 20px;
+            border-radius: 10px;
+            margin-top: 20px;
+            text-decoration: none;
+            animation: pulse 1s infinite;
+          }
+          @keyframes pulse {
+            0% { box-shadow: 0 0 10px #0ff; }
+            50% { box-shadow: 0 0 30px #00f; }
+            100% { box-shadow: 0 0 10px #0ff; }
+          }
+          input {
+            width: 100%;
+            padding: 10px;
+            text-align: center;
+            border-radius: 8px;
+            border: none;
+            background: #222;
+            color: white;
+            margin-top: 15px;
+          }
+        </style>
+      </head>
+      <body>
+        <h2>Arquivo Enviado!</h2>
+        <input value="${downloadLink}" readonly onclick="this.select()" />
+        <a id="download" href="${filePath}" download>Baixar Arquivo</a>
+      </body>
+    </html>
   `);
 });
 
-// Servir os arquivos da pasta uploads
-app.use('/img', express.static(uploadsDir));
+// Servir arquivos estáticos
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 
 // Iniciar servidor
 app.listen(PORT, () => {
-  console.log(`🔥 EQP IMP rodando em http://localhost:${PORT}`);
+  console.log(`Servidor rodando em http://localhost:${PORT}`);
 });
